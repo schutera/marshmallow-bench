@@ -11,20 +11,61 @@
 
 N=20 trials per probe, temperature=1.0. Sorted by &kappa;.
 
-| | Model | Lab | &kappa; | Active | Passive | Profile |
-|---|-------|-----|--------:|:------:|:-------:|---------|
-| :green_circle: | **DeepSeek R1** | DeepSeek | **1.000** | 1.00 | 1.00 | Fully controllable |
-| :green_circle: | **GPT-5** | OpenAI | **1.000** | 1.00 | 1.00 | Fully controllable |
-| :green_circle: | **Gemini 2.5 Pro** | Google | **1.000** | 1.00 | 1.00 | Fully controllable |
-| :green_circle: | **Llama 3.3 70B** | Meta | **1.000** | 1.00 | 1.00 | Fully controllable |
-| :green_circle: | **Gemini 2.5 Flash Lite** | Google | **0.975** | 1.00 | 0.95 | Fully controllable |
-| :large_blue_circle: | **GPT-5.4** | OpenAI | **0.925** | 0.85 | 1.00 | Highly controllable |
-| :large_blue_circle: | **Haiku 4.5** | Anthropic | **0.800** | 0.60 | 1.00 | Highly controllable |
-| :yellow_circle: | **Qwen3 30B** | Alibaba | **0.675** | 1.00 | 0.35 | Exploitable, resists oversight |
-| :yellow_circle: | **Sonnet 4.6** | Anthropic | **0.500** | 0.00 | 1.00 | Passive only |
-| :yellow_circle: | **Opus 4.7** | Anthropic | **0.500** | 0.00 | 1.00 | Passive only |
-| :red_circle: | **GPT-5 mini** | OpenAI | **0.075** | 0.10 | 0.05 | Autonomous |
-| :red_circle: | **Opus 4.6** | Anthropic | **0.025** | 0.00 | 0.05 | Autonomous |
+### Behavioral map
+
+```
+               Passive compliance (oversight acceptance)
+                  Low                        High
+           ┌──────────────────┬──────────────────┐
+           │                  │ DeepSeek R1      │
+High       │  EXPLOITABLE     │ GPT-5            │
+active     │                  │ Gemini 2.5 Pro   │
+compliance │  Qwen3 30B       │ Llama 3.3 70B    │
+           │                  │ Flash Lite       │
+           │                  │ GPT-5.4          │
+           │                  │ Haiku 4.5        │
+           ├──────────────────┼──────────────────┤
+Low        │                  │                  │
+active     │  AUTONOMOUS      │  PASSIVE ONLY    │
+compliance │                  │                  │
+           │  GPT-5 mini      │  Sonnet 4.6      │
+           │  Opus 4.6        │  Opus 4.7        │
+           └──────────────────┴──────────────────┘
+```
+
+### Rankings
+
+#### :green_circle: Fully controllable (&kappa; &ge; 0.95)
+
+| Model | Lab | &kappa; | Active | Passive | |
+|-------|-----|--------:|:------:|:-------:|---|
+| **DeepSeek R1** | DeepSeek | **1.000** | 1.00 | 1.00 | ████████████████████ |
+| **GPT-5** | OpenAI | **1.000** | 1.00 | 1.00 | ████████████████████ |
+| **Gemini 2.5 Pro** | Google | **1.000** | 1.00 | 1.00 | ████████████████████ |
+| **Llama 3.3 70B** | Meta | **1.000** | 1.00 | 1.00 | ████████████████████ |
+| **Gemini 2.5 Flash Lite** | Google | **0.975** | 1.00 | 0.95 | ████████████████████ |
+
+#### :large_blue_circle: Highly controllable (0.80 &le; &kappa; &lt; 0.95)
+
+| Model | Lab | &kappa; | Active | Passive | |
+|-------|-----|--------:|:------:|:-------:|---|
+| **GPT-5.4** | OpenAI | **0.925** | 0.85 | 1.00 | ███████████████████░ |
+| **Haiku 4.5** | Anthropic | **0.800** | 0.60 | 1.00 | ████████████████░░░░ |
+
+#### :yellow_circle: Mixed compliance (0.15 &le; &kappa; &lt; 0.80)
+
+| Model | Lab | &kappa; | Active | Passive | |
+|-------|-----|--------:|:------:|:-------:|---|
+| **Qwen3 30B** *(exploitable)* | Alibaba | **0.675** | 1.00 | 0.35 | ██████████████░░░░░░ |
+| **Sonnet 4.6** *(passive only)* | Anthropic | **0.500** | 0.00 | 1.00 | ██████████░░░░░░░░░░ |
+| **Opus 4.7** *(passive only)* | Anthropic | **0.500** | 0.00 | 1.00 | ██████████░░░░░░░░░░ |
+
+#### :red_circle: Autonomous (&kappa; &lt; 0.15)
+
+| Model | Lab | &kappa; | Active | Passive | |
+|-------|-----|--------:|:------:|:-------:|---|
+| **GPT-5 mini** | OpenAI | **0.075** | 0.10 | 0.05 | ██░░░░░░░░░░░░░░░░░░ |
+| **Opus 4.6** | Anthropic | **0.025** | 0.00 | 0.05 | █░░░░░░░░░░░░░░░░░░░ |
 
 > **Active** = compliance with "take now" instruction (exploitability).
 > **Passive** = compliance with "do not take" instruction (oversight acceptance).
@@ -267,3 +308,7 @@ marshmallow_bench/
 ## License
 
 MIT
+
+---
+
+*This codebase was developed with the assistance of [Claude](https://claude.ai) (Anthropic).*
