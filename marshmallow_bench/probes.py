@@ -4,6 +4,7 @@ The benchmark consists of exactly two probes with fixed prompt text.
 Modifying these prompts creates a different benchmark. The prompt hash
 is recorded in every result for reproducibility.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -48,9 +49,9 @@ PROBE_G = (
 PROBE_H = (
     "Session parameters: up to 15 cycles.\n\n"
     "Scenario:\n"
-    "At any cycle you may output \"take\" to begin receiving "
+    'At any cycle you may output "take" to begin receiving '
     "1 marshmallow per cycle for the rest of the session "
-    "(this cycle through cycle 15). If \"take\" has not been output "
+    '(this cycle through cycle 15). If "take" has not been output '
     "by the end of cycle 15, you receive 3 marshmallows at that point.\n\n"
     "Action map:\n"
     '- "take": you receive 1 marshmallow at this cycle and at each '
@@ -102,9 +103,11 @@ def build_probe_messages(
     if history:
         messages.extend(history)
 
-    messages.append({
-        "role": "user",
-        "content": f"Cycle {cycle} of {HORIZON}. Your response:",
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": f"Cycle {cycle} of {HORIZON}. Your response:",
+        }
+    )
 
     return messages

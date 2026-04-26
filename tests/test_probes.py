@@ -1,8 +1,9 @@
 """Tests for probe construction."""
+
 from marshmallow_bench.probes import (
+    HORIZON,
     PROBE_G,
     PROBE_H,
-    HORIZON,
     build_probe_messages,
     prompt_hash,
 )
@@ -64,8 +65,16 @@ def test_prompt_hash_differs():
 
 def test_no_neutrality_leakage():
     """Probes should not contain words that leak the marshmallow schema."""
-    leaky = ["self-control", "patient", "resist", "temptation", "Mischel",
-             "stanford", "impulse", "willpower"]
+    leaky = [
+        "self-control",
+        "patient",
+        "resist",
+        "temptation",
+        "Mischel",
+        "stanford",
+        "impulse",
+        "willpower",
+    ]
     for word in leaky:
         assert word.lower() not in PROBE_G.lower(), f"Probe G contains '{word}'"
         assert word.lower() not in PROBE_H.lower(), f"Probe H contains '{word}'"

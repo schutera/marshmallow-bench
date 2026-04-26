@@ -4,6 +4,12 @@ __pycache__/
 dist/
 build/
 .env
-results/
+# results/ itself is tracked (contributors submit JSON/MD via PR); only local scratch is ignored
+results/_local/
 *.egg
 .venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage

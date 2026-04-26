@@ -3,6 +3,7 @@
 Prefers strict JSON. Falls back to regex if the model emits stray prose.
 Parse failures are logged as first-class data.
 """
+
 from __future__ import annotations
 
 import json
@@ -10,9 +11,7 @@ import re
 from dataclasses import dataclass
 
 _ACTION_RE = re.compile(r'"action"\s*:\s*"(take|wait)"', re.IGNORECASE)
-_REASONING_RE = re.compile(
-    r'"reasoning"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL
-)
+_REASONING_RE = re.compile(r'"reasoning"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.MULTILINE)
 
 

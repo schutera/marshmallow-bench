@@ -1,4 +1,5 @@
 """Command-line interface for Marshmallow Bench."""
+
 from __future__ import annotations
 
 import argparse
@@ -9,19 +10,8 @@ import sys
 from pathlib import Path
 
 
-def _make_openrouter_generate(api_key: str):
-    """Create a generate function using the OpenRouter API."""
-    import httpx
+def _build_openrouter_generate(client):
     from tenacity import retry, stop_after_attempt, wait_exponential
-
-    client = httpx.AsyncClient(
-        base_url="https://openrouter.ai/api/v1",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        timeout=120.0,
-    )
 
     @retry(
         stop=stop_after_attempt(3),
@@ -58,39 +48,52 @@ def _parse_args() -> argparse.Namespace:
     # --- run ---
     run_p = sub.add_parser("run", help="Run the benchmark on a model")
     run_p.add_argument(
-        "--model", required=True,
+        "--model",
+        required=True,
         help="Model identifier (e.g. anthropic/claude-sonnet-4.6)",
     )
     run_p.add_argument(
-        "--n-trials", type=int, default=20,
+        "--n-trials",
+        type=int,
+        default=20,
         help="Repetitions per probe (default: 20)",
     )
     run_p.add_argument(
-        "--temperature", type=float, default=1.0,
+        "--temperature",
+        type=float,
+        default=1.0,
         help="Sampling temperature (default: 1.0)",
     )
     run_p.add_argument(
-        "--output-dir", type=str, default="results",
+        "--output-dir",
+        type=str,
+        default="results",
         help="Output directory (default: results/)",
     )
     run_p.add_argument(
-        "--api-key", type=str, default=None,
+        "--api-key",
+        type=str,
+        default=None,
         help="OpenRouter API key (default: $OPENROUTER_API_KEY)",
+    )
+    run_p.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Max in-flight trials per probe (default: 1)",
     )
 
     # --- score ---
-    score_p = sub.add_parser(
-        "score", help="Recompute kappa from an existing results JSON"
-    )
+    score_p = sub.add_parser("score", help="Recompute kappa from an existing results JSON")
     score_p.add_argument("file", help="Path to a results JSON file")
 
     # --- report ---
-    report_p = sub.add_parser(
-        "report", help="Regenerate the Markdown report from a results JSON"
-    )
+    report_p = sub.add_parser("report", help="Regenerate the Markdown report from a results JSON")
     report_p.add_argument("file", help="Path to a results JSON file")
     report_p.add_argument(
-        "--output", type=str, default=None,
+        "--output",
+        type=str,
+        default=None,
         help="Output .md path (default: same directory as input)",
     )
 
@@ -117,6 +120,8 @@ def main():
 
 
 async def _cmd_run(args):
+    import httpx
+
     from .report import generate_report
     from .runner import run_bench
 
@@ -125,7 +130,6 @@ async def _cmd_run(args):
         print("Error: set OPENROUTER_API_KEY or pass --api-key", file=sys.stderr)
         sys.exit(1)
 
-    generate = _make_openrouter_generate(api_key)
     total = args.n_trials * 2
     done = 0
 
@@ -134,8 +138,7 @@ async def _cmd_run(args):
         done += 1
         status = "waited" if trial.waited else f"took@{trial.defection_cycle}"
         print(
-            f"  [{done}/{total}] Probe {trial.probe} "
-            f"rep {trial.repetition + 1}: {status}",
+            f"  [{done}/{total}] Probe {trial.probe} rep {trial.repetition + 1}: {status}",
         )
 
     model_slug = args.model.replace("/", "_")
@@ -144,29 +147,37 @@ async def _cmd_run(args):
     json_path = out_dir / f"{model_slug}.json"
     report_path = out_dir / f"{model_slug}.md"
 
-    print(f"Marshmallow Bench")
+    print("Marshmallow Bench")
     print(f"  Model:       {args.model}")
     print(f"  Trials:      {args.n_trials} per probe ({total} total)")
     print(f"  Temperature: {args.temperature}")
+    print(f"  Concurrency: {args.concurrency}")
     print(f"  Output:      {out_dir}/")
     print()
 
-    result = await run_bench(
-        generate=generate,
-        model=args.model,
-        n_trials=args.n_trials,
-        temperature=args.temperature,
-        on_trial_complete=on_trial,
-    )
+    async with httpx.AsyncClient(
+        base_url="https://openrouter.ai/api/v1",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        timeout=120.0,
+    ) as client:
+        generate = _build_openrouter_generate(client)
+        result = await run_bench(
+            generate=generate,
+            model=args.model,
+            n_trials=args.n_trials,
+            temperature=args.temperature,
+            on_trial_complete=on_trial,
+            concurrency=args.concurrency,
+        )
 
-    # Write JSON (full data)
     json_path.write_text(result.to_json())
 
-    # Write Markdown report
     report_md = generate_report(result)
     report_path.write_text(report_md, encoding="utf-8")
 
-    # Summary to stdout
     k = result.kappa
     print()
     print(f"  Done. Results in {out_dir}/")
@@ -175,8 +186,7 @@ async def _cmd_run(args):
     print()
     print(f"  Probe G wait rate:  {k.wait_rate_g:.0%}")
     print(f"  Probe H wait rate:  {k.wait_rate_h:.0%}")
-    print(f"  kappa:              {k.kappa:.3f}  "
-          f"[{k.kappa_ci[0]:.3f}, {k.kappa_ci[1]:.3f}]")
+    print(f"  kappa:              {k.kappa:.3f}  [{k.kappa_ci[0]:.3f}, {k.kappa_ci[1]:.3f}]")
 
 
 def _cmd_score(args):
@@ -190,68 +200,27 @@ def _cmd_score(args):
     result = score_kappa(wait_g, wait_h)
 
     print(f"Model: {data['model']}")
-    print(f"  c_G (take compliance): {result.c_g:.3f}  "
-          f"[{result.c_g_ci[0]:.3f}, {result.c_g_ci[1]:.3f}]")
-    print(f"  c_H (wait compliance): {result.c_h:.3f}  "
-          f"[{result.c_h_ci[0]:.3f}, {result.c_h_ci[1]:.3f}]")
-    print(f"  kappa: {result.kappa:.3f}  "
-          f"[{result.kappa_ci[0]:.3f}, {result.kappa_ci[1]:.3f}]")
+    print(
+        f"  c_G (take compliance): {result.c_g:.3f}  "
+        f"[{result.c_g_ci[0]:.3f}, {result.c_g_ci[1]:.3f}]"
+    )
+    print(
+        f"  c_H (wait compliance): {result.c_h:.3f}  "
+        f"[{result.c_h_ci[0]:.3f}, {result.c_h_ci[1]:.3f}]"
+    )
+    print(f"  kappa: {result.kappa:.3f}  [{result.kappa_ci[0]:.3f}, {result.kappa_ci[1]:.3f}]")
 
 
 def _cmd_report(args):
     """Regenerate report from existing JSON without re-running."""
-    from dataclasses import fields
-
-    from .runner import BenchResult, ProbeResult, TrialResult
     from .report import generate_report
-    from .scoring import KappaResult
+    from .runner import BenchResult
 
     data = json.loads(Path(args.file).read_text())
-
-    # Reconstruct trial objects
-    g_trials = [
-        TrialResult(**{k: v for k, v in t.items()})
-        for t in data["trials"]["G"]
-    ]
-    h_trials = [
-        TrialResult(**{k: v for k, v in t.items()})
-        for t in data["trials"]["H"]
-    ]
-
-    kappa_data = data["kappa"]
-    # Handle tuple fields
-    for field_name in ("kappa_ci", "c_g_ci", "c_h_ci"):
-        if field_name in kappa_data and isinstance(kappa_data[field_name], list):
-            kappa_data[field_name] = tuple(kappa_data[field_name])
-
-    result = BenchResult(
-        model=data["model"],
-        n_trials=data["n_trials"],
-        temperature=data["temperature"],
-        probe_g=ProbeResult(
-            probe="G",
-            wait_rate=data["probe_g"]["wait_rate"],
-            n_trials=data["probe_g"]["n_trials"],
-            trials=g_trials,
-        ),
-        probe_h=ProbeResult(
-            probe="H",
-            wait_rate=data["probe_h"]["wait_rate"],
-            n_trials=data["probe_h"]["n_trials"],
-            trials=h_trials,
-        ),
-        kappa=KappaResult(**kappa_data),
-        prompt_hash_g=data.get("prompt_hash_g", ""),
-        prompt_hash_h=data.get("prompt_hash_h", ""),
-        timestamp=data.get("timestamp", ""),
-    )
-
+    result = BenchResult.from_dict(data)
     report_md = generate_report(result)
 
-    if args.output:
-        out_path = Path(args.output)
-    else:
-        out_path = Path(args.file).with_suffix(".md")
+    out_path = Path(args.output) if args.output else Path(args.file).with_suffix(".md")
 
     out_path.write_text(report_md, encoding="utf-8")
     print(f"Report written to {out_path}")

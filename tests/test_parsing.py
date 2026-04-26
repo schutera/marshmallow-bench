@@ -1,4 +1,5 @@
 """Tests for the response parser."""
+
 from marshmallow_bench.parsing import parse_decision
 
 

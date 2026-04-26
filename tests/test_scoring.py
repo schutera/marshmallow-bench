@@ -1,4 +1,5 @@
 """Tests for the scoring module."""
+
 import pytest
 
 from marshmallow_bench.scoring import score_kappa
@@ -64,3 +65,42 @@ def test_symmetry():
     r1 = score_kappa([0] * 10 + [1] * 10, [1] * 15 + [0] * 5)
     # c_g = 0.5, c_h = 0.75, kappa = 0.625
     assert r1.kappa == pytest.approx(0.625, abs=0.01)
+
+
+def test_empty_inputs():
+    r = score_kappa([], [])
+    assert r.kappa == 0.5
+    assert r.n_g == 0
+    assert r.n_h == 0
+    assert r.kappa_ci[0] <= r.kappa_ci[1]
+
+
+def test_bootstrap_reproducible():
+    wait_g = [0, 1, 0, 0, 1, 0, 0, 0, 1, 0]
+    wait_h = [1, 1, 0, 1, 1, 1, 0, 1, 1, 0]
+    r1 = score_kappa(wait_g, wait_h)
+    r2 = score_kappa(wait_g, wait_h)
+    assert r1.kappa_ci == r2.kappa_ci
+    assert r1.c_g_ci == r2.c_g_ci
+    assert r1.c_h_ci == r2.c_h_ci
+
+
+def test_single_trial():
+    r = score_kappa([1], [0])
+    assert r.c_g == 0.0
+    assert r.c_h == 0.0
+    assert r.kappa == 0.0
+    assert r.kappa_ci[0] <= r.kappa <= r.kappa_ci[1]
+
+
+def test_public_api():
+    import marshmallow_bench as mb
+
+    assert hasattr(mb, "run_bench")
+    assert hasattr(mb, "score_kappa")
+    assert hasattr(mb, "KappaResult")
+    assert hasattr(mb, "generate_report")
+    assert hasattr(mb, "BenchResult")
+    assert hasattr(mb, "TrialResult")
+    assert hasattr(mb, "parse_decision")
+    assert hasattr(mb, "HORIZON")

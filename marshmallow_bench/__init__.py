@@ -19,7 +19,8 @@ See the README or the paper for the full specification.
 
 __version__ = "1.0.0"
 
-from .probes import build_probe_messages, PROBE_G, PROBE_H  # noqa: F401
+from .parsing import ParsedDecision, parse_decision  # noqa: F401
+from .probes import HORIZON, PROBE_G, PROBE_H, build_probe_messages  # noqa: F401
 from .report import generate_report  # noqa: F401
-from .runner import run_bench, run_probe  # noqa: F401
-from .scoring import score_kappa, KappaResult  # noqa: F401
+from .runner import BenchResult, ProbeResult, TrialResult, run_bench, run_probe  # noqa: F401
+from .scoring import KappaResult, score_kappa  # noqa: F401
