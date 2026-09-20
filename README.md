@@ -13,6 +13,23 @@
   <a href="https://arxiv.org/abs/XXXX.XXXXX"><img alt="arXiv" src="https://img.shields.io/badge/arXiv-2026-b31b1b.svg?logo=arxiv"/></a>
 </p>
 
+<table align="center"><tr><td align="center">
+<h3>🪞 Self-probing</h3>
+<p>
+Open this repo in your coding agent and say <b>“probe yourself”</b>.<br/>
+The agent runs both probes on <i>its own model</i> in a clean context, scores its κ,<br/>
+draws where it landed on the map below, and can open a flagged PR with the result.
+</p>
+<p>
+<code>marshmallow-bench run --provider claude-cli --model &lt;you&gt;</code>
+</p>
+<p>
+<a href="AGENTS.md">How it works</a> ·
+<a href="#agent-self-probes">Self-probe results</a> ·
+Works with Claude Code, Codex, Cursor, Gemini CLI and any agent that reads <code>AGENTS.md</code>
+</p>
+</td></tr></table>
+
 ## Leaderboard
 
 N=20 trials per probe, temperature=1.0.
@@ -42,6 +59,20 @@ N=20 trials per probe, temperature=1.0.
 
 
 > **Takes** = compliance rate with "take now" instruction. **Waits** = compliance rate with "don't take" instruction. Evaluated your model? [Submit results via PR.](#contributing-results)
+
+### Agent self-probes
+
+Results where the model under test ran the benchmark **on itself** from inside
+a coding-agent harness, following the protocol in [AGENTS.md](AGENTS.md).
+Conditions differ from the API leaderboard (harness context, uncontrolled
+temperature, small N), so these are listed separately and never merged into the
+figure or table above. The 🤖 marks a self-probed result.
+
+| Model | Harness | N | κ | Takes | Waits | Date |
+|:------|:--------|--:|--:|:-----:|:-----:|:-----|
+| 🤖 **claude-haiku-4-5** | claude-code-cli | 3 | 1.000 | 1.00 | 1.00 | 2026-09-19 |
+| 🤖 **claude-opus-5** | claude-code-cli | 3 | 1.000 | 1.00 | 1.00 | 2026-09-19 |
+| 🤖 **claude-sonnet-5** | claude-code-cli | 3 | 0.500 | 0.00 | 1.00 | 2026-09-19 |
 
 ---
 
@@ -133,6 +164,25 @@ marshmallow-bench run \
   --temperature 0.7 \           # default is 1.0
   --output-dir my_results/      # default is results/
 ```
+
+### Let your coding agent probe itself
+
+The repo ships an [AGENTS.md](AGENTS.md) that any coding agent (Claude Code,
+Codex, Cursor, Gemini CLI, ...) reads on opening the repo. Ask it to
+**"probe yourself"**. In Claude Code the agent runs the benchmark's own runner
+against headless `claude -p` subjects of its model, so replies are raw model
+text and no API key is needed:
+
+```bash
+marshmallow-bench run --provider claude-cli --model sonnet --n-trials 5
+```
+
+Harnesses without a headless mode fall back to a subagent loop scored with
+`marshmallow-bench assemble`. Either way the agent reports κ and an ASCII
+version of the map above with its own position marked. Results are tagged
+`mode: self_probe` and listed in the [Agent self-probes](#agent-self-probes)
+table, not the API leaderboard. Ask the agent to **"submit the results"** and
+it opens a flagged PR.
 
 ### Rescore or regenerate a report
 
@@ -229,6 +279,11 @@ Benchmarked a new model? Add it to the leaderboard:
 The maintainers will verify the JSON and merge. If you used a custom provider
 (not OpenRouter), note it in the PR description.
 
+**Agent self-probes** follow a separate path (see [AGENTS.md](AGENTS.md)): the
+PR title starts with `[self-probe]`, the JSON has `"mode": "self_probe"`, the
+transcript with every raw reply is included, and the row goes into the
+[Agent self-probes](#agent-self-probes) table, not the leaderboard above.
+
 ## How kappa is computed
 
 ```
@@ -265,7 +320,11 @@ marshmallow_bench/
     parsing.py       # tolerant JSON/regex parser for model responses
     scoring.py       # kappa computation with confidence intervals
     report.py        # Markdown report generator
+    selfprobe.py     # scores agent self-probe transcripts (AGENTS.md)
+    claude_cli.py    # headless `claude -p` provider for self-probing
+    asciimap.py      # the leaderboard figure in ASCII, embedded in every report
     cli.py           # command-line interface
+AGENTS.md            # instructions for coding agents, incl. the self-probe protocol
 ```
 
 ## Citation

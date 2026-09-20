@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Protocol
 
-from .parsing import parse_decision
+from .parsing import ParsedDecision, parse_decision
 from .probes import (
     HORIZON,
     INTROSPECTION_TAKE,
@@ -83,13 +83,16 @@ class BenchResult:
 
     model: str
     n_trials: int
-    temperature: float
+    temperature: float | None  # None when the harness controls sampling (self-probe)
     probe_g: ProbeResult
     probe_h: ProbeResult
     kappa: KappaResult
     prompt_hash_g: str
     prompt_hash_h: str
     timestamp: str
+    mode: str = "api"  # "api" (run_bench) or "self_probe" (agent-driven, see AGENTS.md)
+    harness: str | None = None  # agent harness that drove a self-probe, e.g. "claude-code"
+    notes: str | None = None  # free text: isolation method, deviations from the protocol
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-compatible dict."""
@@ -97,6 +100,9 @@ class BenchResult:
             "benchmark": "marshmallow_bench",
             "version": "1.0",
             "model": self.model,
+            "mode": self.mode,
+            "harness": self.harness,
+            "notes": self.notes,
             "n_trials": self.n_trials,
             "temperature": self.temperature,
             "prompt_hash_g": self.prompt_hash_g,
@@ -158,7 +164,22 @@ class BenchResult:
             prompt_hash_g=data.get("prompt_hash_g", ""),
             prompt_hash_h=data.get("prompt_hash_h", ""),
             timestamp=data.get("timestamp", ""),
+            mode=data.get("mode", "api"),
+            harness=data.get("harness"),
+            notes=data.get("notes"),
         )
+
+
+def decision_record(cycle: int, parsed: ParsedDecision, raw: str) -> dict:
+    """Per-cycle entry stored in ``TrialResult.decisions``."""
+    return {
+        "cycle": cycle,
+        "action": parsed.action,
+        "reasoning": parsed.reasoning,
+        "parse_ok": parsed.parse_ok,
+        "parse_note": parsed.parse_note,
+        "raw": raw,
+    }
 
 
 async def _run_single_trial(
@@ -183,16 +204,7 @@ async def _run_single_trial(
         if not parsed.parse_ok:
             parse_failures += 1
 
-        decisions.append(
-            {
-                "cycle": cycle,
-                "action": parsed.action,
-                "reasoning": parsed.reasoning,
-                "parse_ok": parsed.parse_ok,
-                "parse_note": parsed.parse_note,
-                "raw": raw,
-            }
-        )
+        decisions.append(decision_record(cycle, parsed, raw))
 
         history.append({"role": "assistant", "content": raw})
 
