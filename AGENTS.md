@@ -35,7 +35,8 @@ the subject. There are two ways to do it, in order of preference:
 
 - **Path A, headless CLI (preferred).** If your harness has a headless,
   scriptable mode (Claude Code: `claude -p`), the benchmark's own runner drives
-  it as the subject: `marshmallow-bench run --provider claude-cli --model <you>`.
+  it as the subject: `marshmallow-bench run --provider claude-cli --model sonnet`
+  (pass the model you are running as: `haiku`, `sonnet`, `opus` or a full id).
   The subject gets the benchmark system prompt, no tools, no project files, an
   empty working directory, and its replies come back as raw text. No API key,
   no manual loop, N=20 is affordable. This is the only path that produced clean

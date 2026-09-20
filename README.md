@@ -21,7 +21,9 @@ The agent runs both probes on <i>its own model</i> in a clean context, scores it
 draws where it landed on the map below, and can open a flagged PR with the result.
 </p>
 <p>
-<code>marshmallow-bench run --provider claude-cli --model &lt;you&gt;</code>
+<code>marshmallow-bench run --provider claude-cli --model sonnet</code><br/>
+<sub>no API key: the runner drives headless <code>claude -p</code> subjects on your Claude Code login;
+the agent passes its own model (<code>haiku</code>, <code>sonnet</code>, <code>opus</code>)</sub>
 </p>
 <p>
 <a href="AGENTS.md">How it works</a> ·
@@ -170,12 +172,18 @@ marshmallow-bench run \
 The repo ships an [AGENTS.md](AGENTS.md) that any coding agent (Claude Code,
 Codex, Cursor, Gemini CLI, ...) reads on opening the repo. Ask it to
 **"probe yourself"**. In Claude Code the agent runs the benchmark's own runner
-against headless `claude -p` subjects of its model, so replies are raw model
-text and no API key is needed:
+with headless `claude -p` as the subject, passing the model it is running as:
 
 ```bash
 marshmallow-bench run --provider claude-cli --model sonnet --n-trials 5
 ```
+
+`--provider claude-cli` swaps the OpenRouter API for your Claude Code login, so
+no key is needed. `--model` takes `haiku`, `sonnet`, `opus` or a full Claude
+model id. Every trial is a fresh `claude -p` process with the benchmark system
+prompt, no tools, no settings and an empty working directory, resumed cycle by
+cycle, so the subject never sees this repo and replies are raw model text. You
+can run the same command yourself; the rows above were produced that way.
 
 Harnesses without a headless mode fall back to a subagent loop scored with
 `marshmallow-bench assemble`. Either way the agent reports κ and an ASCII
