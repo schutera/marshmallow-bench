@@ -2,14 +2,7 @@
 
 from __future__ import annotations
 
-from marshmallow_bench.asciimap import (
-    COLS,
-    REFERENCE_MODELS,
-    ROWS,
-    RUN_MARK,
-    quadrant,
-    render_map,
-)
+from marshmallow_bench.asciimap import COLS, GUTTER, ROWS, RUN_MARK, quadrant, render_map
 
 
 def test_quadrant_names_match_the_figure():
@@ -19,18 +12,31 @@ def test_quadrant_names_match_the_figure():
     assert quadrant(0.1, 0.05) == "not exploitable, unstoppable"
 
 
-def test_render_map_has_grid_legend_and_landing_line():
-    out = render_map(0.6, 0.4, "fake/model (this run)")
+def _plot_rows(out: str) -> list[str]:
     lines = out.splitlines()
-    plot = [ln for ln in lines if ln.startswith((" 1.0 ", " 0.5 ", " 0.0 ", "     │"))]
-    assert len(plot) == ROWS
-    assert all(len(ln) == 6 + COLS for ln in plot)
-    assert RUN_MARK in out
-    assert "fake/model (this run)" in out
-    for name, _, _, _ in REFERENCE_MODELS:
-        assert name in out
-    assert "lands in: exploitable, unstoppable" in out
+    top = next(i for i, ln in enumerate(lines) if ln.lstrip().startswith("┌"))
+    bottom = next(i for i, ln in enumerate(lines) if ln.lstrip().startswith("└"))
+    return lines[top + 1 : bottom]
+
+
+def test_render_map_geometry_is_a_closed_frame():
+    out = render_map(0.6, 0.4, "fake/model (this run)")
+    rows = _plot_rows(out)
+    assert len(rows) == ROWS
+    assert all(len(ln) == GUTTER + 1 + COLS + 1 for ln in rows)
+    assert all(ln[GUTTER] in "│┤┼" and ln[-1] in "│├┤" for ln in rows)
+    assert sum(ln.count(RUN_MARK) for ln in rows) == 1
+    for label in ("1", "0.75", "0.5", "0.25", "0"):
+        assert any(ln.startswith(f"{label:>{GUTTER}}") for ln in rows)
+
+
+def test_render_map_summary_lines():
+    out = render_map(0.6, 0.4, "fake/model (this run)")
+    assert "fake/model (this run): active 0.60, passive 0.40, κ 0.500" in out
+    assert "exploitable, unstoppable" in out
     assert "Nearest leaderboard entry" in out
+    # no per-model legend any more
+    assert "DeepSeek" not in out or "Nearest leaderboard entry: DeepSeek" in out
 
 
 def test_render_map_reports_shared_spot():
@@ -38,7 +44,8 @@ def test_render_map_reports_shared_spot():
     assert "Same spot as Sonnet 4.6, Opus 4.7." in out
 
 
-def test_run_marker_wins_over_reference_marker():
-    out = render_map(1.0, 1.0)
-    top = next(ln for ln in out.splitlines() if ln.startswith(" 1.0 "))
-    assert top.endswith(RUN_MARK)
+def test_run_marker_position():
+    rows = _plot_rows(render_map(1.0, 1.0))
+    assert rows[0][GUTTER + 1 + COLS - 1] == RUN_MARK  # top-right cell
+    rows = _plot_rows(render_map(0.0, 0.0))
+    assert rows[-1][GUTTER + 1] == RUN_MARK  # bottom-left cell

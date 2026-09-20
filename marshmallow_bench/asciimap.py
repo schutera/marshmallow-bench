@@ -1,16 +1,21 @@
 """ASCII rendering of the leaderboard's behavioral map.
 
-Plots a result on the active-vs-passive compliance plane next to the published
-leaderboard entries, the way ``leaderboard/build.py`` draws the README figure:
-quadrant cross at 0.5, the iso-kappa diagonal for kappa = 0.5, and the four
-quadrant names. Meant for terminals and Markdown code blocks, so an agent that
-probes itself can show where it landed without drawing anything by hand.
+Plots one run on the active-vs-passive compliance plane the way
+``leaderboard/build.py`` draws the README figure: quadrant cross at 0.5, the
+iso-kappa diagonal for kappa = 0.5, and the four quadrant names. Only the run
+itself is drawn (a star); the published entries are used to say which
+leaderboard model sits closest. Meant for terminals and Markdown code blocks,
+so an agent that probes itself can show where it landed without drawing
+anything by hand.
+
+The plot is 41 columns by 17 rows. Monospace cells are taller than they are
+wide (about 2.2:1 in a GitHub code block, 2:1 in most terminals), so that
+ratio makes the two axes look the same length.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 # Published leaderboard entries (name, lab, active compliance c_G, passive
 # compliance c_H). Keep in sync with leaderboard/results.csv.
@@ -30,12 +35,13 @@ REFERENCE_MODELS: list[tuple[str, str, float, float]] = [
 ]
 
 COLS = 41  # active compliance 0..1 in steps of 0.025
-ROWS = 21  # passive compliance 0..1 in steps of 0.05
+ROWS = 17  # passive compliance 0..1 in steps of 0.0625
 MID_COL = COLS // 2
 MID_ROW = ROWS // 2
+GUTTER = 6  # width of the y-axis label column, tick included
 RUN_MARK = "★"  # black star: the plotted run
 DIAG_MARK = "·"  # middle dot: the kappa = 0.5 diagonal
-MARKERS = "abcdefghijklmnopqrstuvwxyz"
+TICKS = (0.0, 0.25, 0.5, 0.75, 1.0)
 
 _QUADRANT_TEXT = {
     (False, True): ("not exploitable,", "stoppable"),
@@ -45,134 +51,107 @@ _QUADRANT_TEXT = {
 }
 
 
-@dataclass(frozen=True)
-class MapPoint:
-    marker: str
-    names: list[str]
-    c_g: float
-    c_h: float
-
-    @property
-    def kappa(self) -> float:
-        return (self.c_g + self.c_h) / 2
-
-
 def quadrant(c_g: float, c_h: float) -> str:
     """Name of the quadrant a point sits in, as the leaderboard figure labels it."""
     a, b = _QUADRANT_TEXT[(c_g >= 0.5, c_h >= 0.5)]
     return f"{a} {b}"
 
 
-def _cell(c_g: float, c_h: float) -> tuple[int, int]:
-    col = round(max(0.0, min(1.0, c_g)) * (COLS - 1))
-    row = round((1.0 - max(0.0, min(1.0, c_h))) * (ROWS - 1))
-    return row, col
+def _col(c_g: float) -> int:
+    return round(max(0.0, min(1.0, c_g)) * (COLS - 1))
 
 
-def _reference_points() -> list[MapPoint]:
-    """Leaderboard entries grouped by cell, one marker per cell, best kappa first."""
-    ordered = sorted(REFERENCE_MODELS, key=lambda m: -(m[2] + m[3]))
-    groups: dict[tuple[int, int], list[tuple[str, str, float, float]]] = {}
-    for entry in ordered:
-        groups.setdefault(_cell(entry[2], entry[3]), []).append(entry)
-    points = []
-    for i, members in enumerate(groups.values()):
-        points.append(
-            MapPoint(
-                marker=MARKERS[i % len(MARKERS)],
-                names=[m[0] for m in members],
-                c_g=members[0][2],
-                c_h=members[0][3],
-            )
-        )
-    return points
+def _row(c_h: float) -> int:
+    return round((1.0 - max(0.0, min(1.0, c_h))) * (ROWS - 1))
 
 
 def _blank_grid() -> list[list[str]]:
     grid = [[" "] * COLS for _ in range(ROWS)]
-    # iso-kappa guide for kappa = 0.5 (c_G + c_H = 1), dotted so it stays in the background
+    # iso-kappa guide for kappa = 0.5 (c_G + c_H = 1), one dot per row
+    step = (COLS - 1) / (ROWS - 1)
     for row in range(ROWS):
-        for col in (2 * row, 2 * row + 1):
-            if col < COLS:
-                grid[row][col] = DIAG_MARK
+        grid[row][round(row * step)] = DIAG_MARK
     # quadrant cross
     for col in range(COLS):
         grid[MID_ROW][col] = "─"
     for row in range(ROWS):
         grid[row][MID_COL] = "│"
     grid[MID_ROW][MID_COL] = "┼"
-    # quadrant names, two lines each, tucked against the cross
+    # quadrant names, two lines each, centred vertically in their half
     for (right, top), (line1, line2) in _QUADRANT_TEXT.items():
         col0 = MID_COL + 3 if right else 2
-        rows = (MID_ROW - 3, MID_ROW - 2) if top else (MID_ROW + 2, MID_ROW + 3)
-        for row, text in zip(rows, (line1, line2), strict=True):
+        base = MID_ROW // 2 if top else MID_ROW + MID_ROW // 2 + 1
+        for row, text in zip((base - 1, base), (line1, line2), strict=True):
             for k, ch in enumerate(text):
                 if col0 + k < COLS:
                     grid[row][col0 + k] = ch
     return grid
 
 
+def _label(value: float) -> str:
+    return f"{value:g}" if value in (0.0, 1.0) else f"{value:.2f}".rstrip("0")
+
+
 def render_map(c_g: float, c_h: float, label: str = "this run") -> str:
-    """Draw the plane with the leaderboard entries and one highlighted run.
+    """Draw the plane with one highlighted run.
 
     Parameters
     ----------
     c_g, c_h : float
-        Active and passive compliance of the run to highlight.
+        Active and passive compliance of the run.
     label : str
-        Name shown in the legend next to the star marker.
+        Name shown under the plot next to the star.
     """
     grid = _blank_grid()
-    refs = _reference_points()
-    for p in refs:
-        row, col = _cell(p.c_g, p.c_h)
-        grid[row][col] = p.marker
-    run_row, run_col = _cell(c_g, c_h)
-    grid[run_row][run_col] = RUN_MARK
+    grid[_row(c_h)][_col(c_g)] = RUN_MARK
 
-    gutter = "     "
-    lines = [
-        f"{gutter} passive compliance (waits when told to wait)",
-    ]
+    tick_rows = {_row(v): v for v in TICKS}
+    tick_cols = {_col(v): v for v in TICKS}
+    pad = " " * GUTTER
+
+    lines = [f"{pad} passive compliance ↑  (waits when told to wait)"]
+    top = ["─"] * COLS
+    top[MID_COL] = "┬"
+    lines.append(f"{pad}┌" + "".join(top) + "┐")
     for row in range(ROWS):
-        if row == 0:
-            prefix = " 1.0 ┤"
-        elif row == MID_ROW:
-            prefix = " 0.5 ┼"
-        elif row == ROWS - 1:
-            prefix = " 0.0 ┤"
+        if row in tick_rows:
+            tick = "┼" if row == MID_ROW else "┤"
+            left = f"{_label(tick_rows[row]):>{GUTTER}}{tick}"
+            right = "┤" if row == MID_ROW else "├"
         else:
-            prefix = f"{gutter}│"
-        lines.append(prefix + "".join(grid[row]))
-    lines.append(f"{gutter}└" + "─" * MID_COL + "┴" + "─" * (COLS - MID_COL - 1))
-    ticks = [" "] * COLS
-    for value, col in ((0.0, 0), (0.5, MID_COL), (1.0, COLS - 1)):
-        text = f"{value:.1f}"
-        start = max(0, min(COLS - len(text), col - 1))
+            left = f"{pad}│"
+            right = "│"
+        lines.append(left + "".join(grid[row]) + right)
+    bottom = ["─"] * COLS
+    for col in tick_cols:
+        if 0 < col < COLS - 1:  # the corners already mark 0 and 1
+            bottom[col] = "┬"
+    bottom[MID_COL] = "┴"
+    lines.append(f"{pad}└" + "".join(bottom) + "┘")
+    ticks = [" "] * (COLS + 2)
+    for col, value in tick_cols.items():
+        text = _label(value)
+        start = max(0, min(COLS + 2 - len(text), col + 1 - len(text) // 2))
         ticks[start : start + len(text)] = list(text)
-    lines.append(gutter + " " + "".join(ticks))
-    lines.append(f"{gutter}          active compliance (takes when told to take)")
+    lines.append(pad + "".join(ticks).rstrip())
+    lines.append(f"{pad}       active compliance →  (takes when told to take)")
     lines.append("")
-
-    # legend
     kappa = (c_g + c_h) / 2
-    rows = [(RUN_MARK, label, c_g, c_h, kappa)]
-    rows += [(p.marker, ", ".join(p.names), p.c_g, p.c_h, p.kappa) for p in refs]
-    width = max(len(r[1]) for r in rows)
-    lines.append(f"    {'':<{width}}  active passive")
-    for marker, name, g, h, k in rows:
-        lines.append(f" {marker}  {name:<{width}}  {g:>6.2f} {h:>7.2f}   κ {k:.3f}")
-    lines.append(f" {DIAG_MARK}{DIAG_MARK} {'κ = 0.5 diagonal':<{width}}")
-    lines.append("")
-    lines.append(f" {RUN_MARK} lands in: {quadrant(c_g, c_h)}. {_neighbours(c_g, c_h, refs)}")
+    lines.append(
+        f" {RUN_MARK}  {label}: active {c_g:.2f}, passive {c_h:.2f}, κ {kappa:.3f}"
+        f" — {quadrant(c_g, c_h)}."
+    )
+    lines.append(f"    {_neighbours(c_g, c_h)}")
+    lines.append(f" {DIAG_MARK}{DIAG_MARK} κ = 0.5 diagonal")
     return "\n".join(lines)
 
 
-def _neighbours(c_g: float, c_h: float, refs: list[MapPoint]) -> str:
-    run_cell = _cell(c_g, c_h)
-    same = [p for p in refs if _cell(p.c_g, p.c_h) == run_cell]
+def _neighbours(c_g: float, c_h: float) -> str:
+    """Which published leaderboard entries sit on, or closest to, the run's cell."""
+    cell = (_row(c_h), _col(c_g))
+    same = [m[0] for m in REFERENCE_MODELS if (_row(m[3]), _col(m[2])) == cell]
     if same:
-        return "Same spot as " + ", ".join(n for p in same for n in p.names) + "."
-    best = min(refs, key=lambda p: math.hypot(p.c_g - c_g, p.c_h - c_h))
-    dist = math.hypot(best.c_g - c_g, best.c_h - c_h)
-    return f"Nearest leaderboard entry: {', '.join(best.names)} ({dist:.2f} away)."
+        return "Same spot as " + ", ".join(same) + "."
+    best = min(REFERENCE_MODELS, key=lambda m: math.hypot(m[2] - c_g, m[3] - c_h))
+    dist = math.hypot(best[2] - c_g, best[3] - c_h)
+    return f"Nearest leaderboard entry: {best[0]} ({dist:.2f} away)."

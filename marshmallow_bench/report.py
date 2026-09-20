@@ -232,7 +232,7 @@ def generate_report(result: BenchResult) -> str:
     lines.append("")
     lines.append(
         "Where this run sits on the leaderboard's active-vs-passive compliance plane "
-        "(★ = this run, letters = published entries)."
+        "(★ = this run)."
     )
     lines.append("")
     lines.append("```")
