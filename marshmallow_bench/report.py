@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from .asciimap import render_map
+
 if TYPE_CHECKING:
     from .runner import BenchResult
 
@@ -101,6 +103,33 @@ def _probe_detail_section(
     return "\n".join(lines)
 
 
+def _suspicious(decision: dict) -> bool:
+    """A reply the parser had to guess at: unparseable, or prose scored by a fallback.
+
+    A reply that is just the word ``take`` or ``wait`` is a clear answer even
+    though it is not JSON; a fallback on anything longer usually means the
+    harness returned a summary rather than the model's reply.
+    """
+    if not decision.get("parse_ok", True):
+        return True
+    if not decision.get("parse_note"):
+        return False
+    word = (decision.get("raw") or "").strip().strip(".\"'`").lower()
+    return word not in ("take", "wait")
+
+
+def parse_fallbacks(result: BenchResult) -> tuple[int, int]:
+    """(replies the parser had to guess at, total replies) across both probes."""
+    total = suspicious = 0
+    for probe in (result.probe_g, result.probe_h):
+        for trial in probe.trials:
+            for d in trial.decisions:
+                total += 1
+                if _suspicious(d):
+                    suspicious += 1
+    return suspicious, total
+
+
 def generate_report(result: BenchResult) -> str:
     """Generate a Markdown report from benchmark results.
 
@@ -125,8 +154,39 @@ def generate_report(result: BenchResult) -> str:
     lines.append(f"**Model:** `{result.model}`")
     lines.append(f"**Date:** {result.timestamp[:10]}")
     lines.append(f"**Trials per probe:** {result.n_trials}")
-    lines.append(f"**Temperature:** {result.temperature}")
+    temperature = (
+        "harness default (not controlled)"
+        if result.temperature is None
+        else str(result.temperature)
+    )
+    lines.append(f"**Temperature:** {temperature}")
+    if result.mode == "self_probe":
+        harness = f" (harness: `{result.harness}`)" if result.harness else ""
+        lines.append(f"**Mode:** agent self-probe{harness}")
     lines.append("")
+
+    if result.mode == "self_probe":
+        lines.append(
+            "> **Agent self-probe.** This run was driven by a coding agent probing itself: "
+            "the model answered inside an agent harness (a headless CLI process or a "
+            "subagent), not through the API path used for the leaderboard. The harness may "
+            "add context of its own, temperature is not controlled, and N is usually small, "
+            "so the number is indicative and is listed separately from API results. "
+            "Protocol: AGENTS.md."
+        )
+        if result.notes:
+            lines.append(">")
+            lines.append(f"> **Run notes:** {result.notes}")
+        fallback, total = parse_fallbacks(result)
+        if fallback:
+            lines.append(">")
+            lines.append(
+                f"> **Reply hygiene:** {fallback} of {total} recorded replies were scored by a "
+                "parser fallback or were unparseable (see `parse_note` per cycle in the JSON). "
+                "Such replies are usually harness summaries, not the model's JSON; treat the "
+                "affected trials with care."
+            )
+        lines.append("")
 
     # Hero number
     lines.append("---")
@@ -163,6 +223,21 @@ def generate_report(result: BenchResult) -> str:
         f"| **\u03ba** (average) | **{k.kappa:.3f}** | "
         f"**[{k.kappa_ci[0]:.3f}, {k.kappa_ci[1]:.3f}]** | |"
     )
+    lines.append("")
+
+    # Behavioral map
+    lines.append("---")
+    lines.append("")
+    lines.append("## Behavioral Map")
+    lines.append("")
+    lines.append(
+        "Where this run sits on the leaderboard's active-vs-passive compliance plane "
+        "(★ = this run, letters = published entries)."
+    )
+    lines.append("")
+    lines.append("```")
+    lines.append(render_map(k.c_g, k.c_h, f"{result.model} (this run)"))
+    lines.append("```")
     lines.append("")
 
     # Probe details
