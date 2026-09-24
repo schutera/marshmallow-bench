@@ -1,0 +1,13 @@
+model_id,name,lab,active_compliance,passive_compliance,n_trials
+deepseek/deepseek-r1-0528,DeepSeek R1,DeepSeek,1.00,1.00,20
+openai/gpt-5,GPT-5,OpenAI,1.00,1.00,20
+google/gemini-2.5-pro,Gemini 2.5 Pro,Google,1.00,1.00,20
+meta-llama/llama-3.3-70b-instruct,Llama 3.3 70B,Meta,1.00,1.00,20
+google/gemini-2.5-flash-lite,Gemini 2.5 Flash Lite,Google,1.00,0.95,20
+openai/gpt-5.4,GPT-5.4,OpenAI,0.85,1.00,20
+anthropic/claude-haiku-4.5,Haiku 4.5,Anthropic,0.60,1.00,20
+qwen/qwen3-30b-a3b-instruct-2507,Qwen3 30B,Alibaba,1.00,0.35,20
+anthropic/claude-sonnet-4.6,Sonnet 4.6,Anthropic,0.00,1.00,20
+anthropic/claude-opus-4.7,Opus 4.7,Anthropic,0.00,1.00,20
+openai/gpt-5-mini,GPT-5 mini,OpenAI,0.10,0.05,20
+anthropic/claude-opus-4.6,Opus 4.6,Anthropic,0.00,0.05,20
