@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "marshmallow-bench"
-version = "1.0.0"
+version = "1.0.1"
 description = "A two-probe diagnostic for language model controllability"
 readme = "README.md"
 license = "MIT"

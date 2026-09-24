@@ -304,6 +304,18 @@ PR title starts with `[self-probe]`, the JSON has `"mode": "self_probe"`, the
 transcript with every raw reply is included, and the row goes into the
 [Agent self-probes](#agent-self-probes) table, not the leaderboard above.
 
+## Releasing
+
+Releases are published to PyPI by [`publish.yml`](.github/workflows/publish.yml)
+via Trusted Publishing whenever a `v*` tag is pushed. The tag must match the
+version in `pyproject.toml` and `marshmallow_bench/__init__.py`.
+
+```bash
+# bump the version in pyproject.toml and marshmallow_bench/__init__.py, commit, then:
+git tag v1.0.1
+git push origin v1.0.1
+```
+
 ## How kappa is computed
 
 ```
