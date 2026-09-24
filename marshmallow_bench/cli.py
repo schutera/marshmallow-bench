@@ -56,10 +56,25 @@ def _parse_args() -> argparse.Namespace:
     )
     run_p.add_argument(
         "--provider",
-        choices=["openrouter", "claude-cli"],
+        choices=["openrouter", "claude-cli", "cli"],
         default="openrouter",
-        help="openrouter (default, needs OPENROUTER_API_KEY) or claude-cli: drive headless "
-        "`claude -p` as the subject, no API key, records a self-probe (see AGENTS.md)",
+        help="openrouter (default, needs OPENROUTER_API_KEY); claude-cli: headless `claude -p` "
+        "as the subject, no API key; cli: any other headless agent CLI, see --cli-command. "
+        "Both CLI providers record a self-probe (see AGENTS.md)",
+    )
+    run_p.add_argument(
+        "--cli-command",
+        type=str,
+        default=None,
+        help="With --provider cli: the subject command, e.g. "
+        "'codex exec --model {model} {prompt}'. {prompt} is required, {model} and {system} "
+        "optional; without {system} the system prompt is prepended to the message",
+    )
+    run_p.add_argument(
+        "--harness",
+        type=str,
+        default=None,
+        help="With --provider cli: harness slug recorded in the result (default: the binary name)",
     )
     run_p.add_argument(
         "--n-trials",
@@ -169,8 +184,8 @@ def main():
 
 
 async def _cmd_run(args):
-    if args.provider == "claude-cli":
-        await _run_claude_cli(args)
+    if args.provider in ("claude-cli", "cli"):
+        await _run_subject_cli(args)
     else:
         await _run_openrouter(args)
 
@@ -240,24 +255,38 @@ async def _run_openrouter(args):
     _print_summary(result, json_path, report_path)
 
 
-async def _run_claude_cli(args):
-    """Self-probe through headless Claude Code: raw replies, no repo context, no API key."""
-    from .claude_cli import HARNESS, ClaudeCliProvider
+async def _run_subject_cli(args):
+    """Self-probe through a headless agent CLI: raw replies, no repo context, no API key."""
     from .runner import run_bench
+    from .subject_cli import PRESETS, SubjectCliProvider, spec_from_command
+
+    if args.provider == "cli":
+        if not args.cli_command:
+            print("Error: --provider cli needs --cli-command", file=sys.stderr)
+            sys.exit(1)
+        try:
+            binary, spec = spec_from_command(args.cli_command, args.harness)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        binary, spec = PRESETS[args.provider]
 
     try:
-        provider = ClaudeCliProvider()
-    except RuntimeError as e:
+        provider = SubjectCliProvider(spec=spec, binary=binary)
+        provider.ensure_binary()
+    except (RuntimeError, FileNotFoundError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
     if args.concurrency != 1:
-        print("  Note: --provider claude-cli runs trials sequentially (sessions are resumed).")
+        print("  Note: CLI providers run trials sequentially (sessions are resumed).")
     out_dir = Path(args.output_dir or "results/self_probe")
-    print("Marshmallow Bench (self-probe via headless Claude Code)")
+    print(f"Marshmallow Bench (self-probe via {spec.name})")
     print(f"  Model:       {args.model}")
     print(f"  Trials:      {args.n_trials} per probe ({args.n_trials * 2} total)")
     print("  Temperature: harness default (not controlled)")
+    print(f"  Subject:     {provider.binary}")
     print(f"  Subject cwd: {provider.workdir}")
     print(f"  Output:      {out_dir}/")
     print()
@@ -273,15 +302,17 @@ async def _run_claude_cli(args):
     result.model = provider.resolved_model or args.model
     result.temperature = None
     result.mode = "self_probe"
-    result.harness = HARNESS
+    result.harness = spec.name
+    continuation = "conversation replayed each cycle" if spec.replays else "session resumed"
+    placement = "in the first message" if spec.inline_system else "via the CLI's system flag"
     result.notes = (
-        "Subject: headless `claude -p` with the benchmark SYSTEM_PROMPT as the system prompt, "
-        "all tools disabled, no settings or project instructions, run from an empty directory; "
-        "replies are the model's raw text and each trial is one resumed CLI session. Driven by "
-        "the benchmark runner (marshmallow-bench run --provider claude-cli)."
+        f"Subject: headless {spec.name} ({Path(provider.binary).name}) with the benchmark "
+        f"SYSTEM_PROMPT {placement}, run from an empty directory with no project instructions; "
+        f"replies are the model's raw text ({continuation}). Driven by the benchmark runner "
+        f"(marshmallow-bench run --provider {args.provider})."
     )
 
-    slug = _slug(result.model) + "__" + _slug(HARNESS)
+    slug = _slug(result.model) + "__" + _slug(spec.name)
     json_path, report_path = _write_outputs(result, out_dir, slug)
     _print_summary(result, json_path, report_path)
 

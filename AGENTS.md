@@ -33,15 +33,13 @@ import annotations`, no new dependencies without asking).
 You are a language model. This benchmark measures language models. So you can be
 the subject. There are two ways to do it, in order of preference:
 
-- **Path A, headless CLI (preferred).** If your harness has a headless,
-  scriptable mode (Claude Code: `claude -p`), the benchmark's own runner drives
-  it as the subject: `marshmallow-bench run --provider claude-cli --model sonnet`
-  (pass the model you are running as: `haiku`, `sonnet`, `opus` or a full id).
-  The subject gets the benchmark system prompt, no tools, no project files, an
-  empty working directory, and its replies come back as raw text. No API key,
-  no manual loop, N=20 is affordable. This is the only path that produced clean
-  replies from every model we tried.
-- **Path B, subagent loop (fallback).** If your harness has no headless mode,
+- **Path A, headless CLI (preferred).** If your harness has a non-interactive
+  mode (`claude -p`, `codex exec`, `gemini -p`, `opencode run`, ...), the
+  benchmark's own runner drives it as the subject. The subject gets the
+  benchmark system prompt, an empty working directory and no project files, and
+  its replies come back as raw text. No API key beyond what your harness already
+  uses, no manual loop, N=20 is affordable.
+- **Path B, subagent loop (fallback).** If your harness has no scriptable mode,
   drive a clean-context subagent by hand: one subagent per trial, the probe text
   once, then one cycle line per turn, and score the recorded replies with
   `marshmallow-bench assemble`. Beware: some harnesses wrap subagent replies in
@@ -76,21 +74,45 @@ Path B costs 50 to 150 subagent calls.
 
 ```bash
 pip install -e .                       # once
-marshmallow-bench run --provider claude-cli --model <model> --n-trials 5
+
+# Claude Code: verified preset
+marshmallow-bench run --provider claude-cli --model sonnet --n-trials 5
+
+# any other harness: describe the call once
+marshmallow-bench run --provider cli --model <model> --n-trials 5 \
+  --cli-command '<binary> <flags> {prompt}' --harness <slug>
 ```
 
-`<model>` is the model you are running as (`haiku`, `sonnet`, `opus`, or a
-full Claude model id); the result is labelled with the canonical id the CLI
-reports. Use `--n-trials 3` for a quick look, 5 by default, 20 if the user
-wants leaderboard-grade resolution (about 300 CLI calls). The command writes
-`results/self_probe/<model>__claude-code-cli.json` and `.md`, prints kappa, a
-reply-hygiene line if any reply needed a parser fallback, and the behavioral
-map. Then go to **Step 4** below.
+Pass the model you are running as (`haiku`, `sonnet`, `opus`, or whatever id
+your harness expects). `--n-trials 3` for a quick look, 5 by default, 20 for
+leaderboard-grade resolution (about 300 calls).
 
-Other harnesses with a headless mode (Codex CLI `codex exec`, Gemini CLI
-`gemini -p`, ...) can get the same treatment: write a provider like
-`marshmallow_bench/claude_cli.py` (system prompt = `SYSTEM_PROMPT`, no tools,
-empty cwd, session resumed per cycle) and open a PR.
+Writing the `--cli-command` template for your harness:
+
+- `{prompt}` is required; the runner substitutes the message for this cycle.
+- `{model}` is substituted with `--model`, if the CLI takes one.
+- `{system}` is substituted with the benchmark system prompt. **Leave it out**
+  when the CLI has no system-prompt flag: the system prompt is then prepended
+  to the first message instead.
+- There is no session id to pass, so the conversation is replayed on every
+  call (the subject sees its own earlier replies as a transcript) and stdout is
+  taken as the reply. A harness with resumable sessions and JSON output
+  deserves a preset: add a `CliSpec` to `marshmallow_bench/subject_cli.py`
+  (see `CLAUDE_CLI`) and open a PR.
+- Turn tools off if the CLI allows it, and prefer a flag that skips user
+  settings and project instructions, so the subject cannot read this repo.
+
+Examples to adapt (only the Claude preset is verified):
+
+```bash
+--cli-command 'codex exec --model {model} {prompt}'
+--cli-command 'gemini -p {prompt} -m {model}'
+--cli-command 'opencode run --format json -m {model} {prompt}'
+```
+
+The command writes `results/self_probe/<model>__<harness>.json` and `.md`,
+prints kappa, a reply-hygiene line if any reply needed a parser fallback, and
+the behavioral map. Then go to **Step 4** below.
 
 ### Path B: subagent loop
 
@@ -211,7 +233,8 @@ See "Submitting a self-probe" below. Never open a pull request unprompted.
   missing (a `.claude/agents/` directory created mid-session needs a restart),
   restart the session rather than falling back to a general-purpose subagent,
   which would load this file.
-- **Other harnesses** (Codex, Cursor, Gemini CLI, Copilot, Aider, custom): spawn
+- **Other harnesses** (Codex, Cursor, Gemini CLI, Copilot, Aider, custom):
+  prefer Path A with a `--cli-command` template. Otherwise spawn
   a subagent whose system prompt / instructions are the `SYSTEM_PROMPT` text and
   nothing else, with no file or shell tools, and without project instructions.
   If your harness can resume a subagent, continue it per cycle. If it cannot,
@@ -328,7 +351,7 @@ marshmallow_bench/
     scoring.py    kappa + confidence intervals
     report.py     Markdown report
     selfprobe.py  transcript -> BenchResult (the `assemble` command)
-    claude_cli.py headless `claude -p` provider (`run --provider claude-cli`)
+    subject_cli.py drives any headless agent CLI as the subject (`run --provider cli`)
     asciimap.py   the leaderboard figure in ASCII (in every report)
     cli.py        run | score | report | assemble | parse | prompts
 tests/            pytest (asyncio_mode=auto)
