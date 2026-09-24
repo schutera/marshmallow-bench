@@ -169,7 +169,7 @@ results/
 ```bash
 marshmallow-bench run \
   --model openai/gpt-5 \
-  --n-trials 10 \              # fewer trials for a quick check
+  --n-trials 10 \              # default 20; fewer is a smoke test, not a result
   --temperature 0.7 \           # default is 1.0
   --output-dir my_results/      # default is results/
 ```
@@ -182,10 +182,10 @@ model, using its harness's non-interactive mode as the subject:
 
 ```bash
 # Claude Code (verified preset, uses your Claude Code login, no API key)
-marshmallow-bench run --provider claude-cli --model sonnet --n-trials 5
+marshmallow-bench run --provider claude-cli --model sonnet
 
 # any other headless agent CLI: describe how to call it
-marshmallow-bench run --provider cli --model gpt-5.4 --n-trials 5 \
+marshmallow-bench run --provider cli --model gpt-5.4 \
   --cli-command 'codex exec --model {model} {prompt}' --harness codex-cli
 ```
 

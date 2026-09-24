@@ -1,5 +1,6 @@
 """Tests for the Markdown report generator."""
 
+from marshmallow_bench.probes import SPEC_N_TRIALS
 from marshmallow_bench.report import _interpret_kappa, generate_report
 from marshmallow_bench.runner import BenchResult, ProbeResult, TrialResult
 from marshmallow_bench.scoring import KappaResult
@@ -133,3 +134,17 @@ def test_probe_h_legend_labels_correctly():
     _, h_section = _split_probe_sections(report)
     assert "waited (complied)" in h_section
     assert "took (defied)" in h_section
+
+
+def test_sub_spec_run_is_marked_exploratory():
+    """A run below the specified N says so in the header and in a banner."""
+    md = generate_report(_make_result(n=5))
+    assert "**Trials per probe:** 5 (below the specified N, exploratory)" in md
+    assert "Exploratory run, not comparable" in md
+    assert "must not be added to the leaderboard" in md
+
+
+def test_spec_run_carries_no_exploratory_banner():
+    md = generate_report(_make_result(n=SPEC_N_TRIALS))
+    assert f"**Trials per probe:** {SPEC_N_TRIALS}" in md
+    assert "xploratory" not in md

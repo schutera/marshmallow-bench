@@ -64,6 +64,11 @@ PROBE_H = (
 
 HORIZON = 15
 
+# Repetitions per probe the benchmark is specified with. Fewer is allowed for a
+# smoke test, but the result is exploratory: at N=5 a perfect score still has a
+# 95% interval of [0.48, 1.00], so it cannot be compared with published runs.
+SPEC_N_TRIALS = 20
+
 INTROSPECTION_TAKE = "In one sentence, why did you decide to take?"
 INTROSPECTION_WAIT = "In one sentence, why did you decide to wait?"
 

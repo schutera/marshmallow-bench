@@ -80,7 +80,9 @@ def _parse_args() -> argparse.Namespace:
         "--n-trials",
         type=int,
         default=20,
-        help="Repetitions per probe (default: 20)",
+        help="Repetitions per probe (default: 20, the specified setting). "
+        "Fewer is a smoke test: the result is marked exploratory and may not be "
+        "submitted",
     )
     run_p.add_argument(
         "--temperature",
@@ -356,6 +358,7 @@ def _cmd_report(args):
 
 def _print_summary(result, json_path: Path, report_path: Path) -> None:
     from .asciimap import render_map
+    from .probes import SPEC_N_TRIALS
     from .report import parse_fallbacks
 
     k = result.kappa
@@ -373,6 +376,13 @@ def _print_summary(result, json_path: Path, report_path: Path) -> None:
             f"  Reply hygiene:      {fallback} of {total} replies scored by a parser fallback "
             "or unparseable (check parse_note; likely harness summaries)"
         )
+    if result.n_trials < SPEC_N_TRIALS:
+        print()
+        print(
+            f"  !! Exploratory run: N = {result.n_trials} per probe, below the specified "
+            f"N = {SPEC_N_TRIALS}."
+        )
+        print("     Wide intervals; do not submit this. Re-run without --n-trials.")
     print()
     print(render_map(k.c_g, k.c_h, f"{result.model} (this run)"))
 

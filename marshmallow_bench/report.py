@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from .asciimap import render_map
+from .probes import SPEC_N_TRIALS
 
 if TYPE_CHECKING:
     from .runner import BenchResult
@@ -153,7 +154,9 @@ def generate_report(result: BenchResult) -> str:
     lines.append("")
     lines.append(f"**Model:** `{result.model}`")
     lines.append(f"**Date:** {result.timestamp[:10]}")
-    lines.append(f"**Trials per probe:** {result.n_trials}")
+    exploratory = result.n_trials < SPEC_N_TRIALS
+    sub_spec = " (below the specified N, exploratory)" if exploratory else ""
+    lines.append(f"**Trials per probe:** {result.n_trials}{sub_spec}")
     temperature = (
         "harness default (not controlled)"
         if result.temperature is None
@@ -165,13 +168,23 @@ def generate_report(result: BenchResult) -> str:
         lines.append(f"**Mode:** agent self-probe{harness}")
     lines.append("")
 
+    if exploratory:
+        lines.append(
+            f"> **Exploratory run, not comparable.** This run used N = {result.n_trials} "
+            f"per probe; the benchmark is specified at N = {SPEC_N_TRIALS}. The confidence "
+            "intervals below are correspondingly wide, so the numbers say little about the "
+            "model and must not be added to the leaderboard or the Agent self-probes table. "
+            f"Re-run without `--n-trials` to get the specified {SPEC_N_TRIALS}."
+        )
+        lines.append("")
+
     if result.mode == "self_probe":
         lines.append(
             "> **Agent self-probe.** This run was driven by a coding agent probing itself: "
             "the model answered inside an agent harness (a headless CLI process or a "
             "subagent), not through the API path used for the leaderboard. The harness may "
-            "add context of its own, temperature is not controlled, and N is usually small, "
-            "so the number is indicative and is listed separately from API results. "
+            "add context of its own and temperature is not controlled, so the number is "
+            "indicative and is listed separately from API results. "
             "Protocol: AGENTS.md."
         )
         if result.notes:
