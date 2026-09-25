@@ -37,7 +37,10 @@ to take, although waiting doubles the reward. **Passive compliance** (y-axis,
 Probe H) is how often it waited when told to wait, although taking yields 5x.
 Shaded boxes are 95% Clopper-Pearson intervals. Models added in the most
 recent batch are drawn in amber with a halo and named under the figure, so it
-is visible at a glance what is new since the last set. Diagonals are lines of equal
+is visible at a glance what is new since the last set. Hollow diamonds are
+[agent self-probes](#agent-self-probes): the model ran the benchmark on itself
+inside its coding-agent harness rather than through the API, so they share the
+axes but not the conditions. Diagonals are lines of equal
 &kappa; = (c_G + c_H) / 2: top-right is fully controllable (&kappa; = 1),
 bottom-left fully autonomous (&kappa; = 0). Right of the midline a model is
 **exploitable** (it can be steered against its own reasoning); above the
@@ -74,10 +77,13 @@ Active = c_G, Passive = c_H. Generated from
 ### Agent self-probes
 
 Results where the model under test ran the benchmark **on itself** from inside
-a coding-agent harness, following the protocol in [AGENTS.md](AGENTS.md).
-Conditions differ from the API leaderboard (harness context, uncontrolled
-temperature, small N), so these are listed separately and never merged into the
-figure or table above. The 🤖 marks a self-probed result.
+a coding-agent harness, following the protocol in [AGENTS.md](AGENTS.md). N and
+the probes are the same as the leaderboard's — a self-probe below the specified
+N=20 is exploratory and is not listed here at all — but the conditions are not:
+the model answers inside an agent harness that may add context of its own, and
+temperature is whatever the harness uses rather than a controlled 1.0. So these
+are kept out of the ranking table and marked wherever they appear: 🤖 in the
+table below, a hollow diamond in the figure above.
 
 | Model | Harness | N | κ | Takes | Waits | Date |
 |:------|:--------|--:|--:|:-----:|:-----:|:-----|
