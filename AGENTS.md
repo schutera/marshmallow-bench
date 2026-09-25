@@ -76,16 +76,21 @@ Path B costs 50 to 150 subagent calls.
 pip install -e .                       # once
 
 # Claude Code: verified preset
-marshmallow-bench run --provider claude-cli --model sonnet --n-trials 5
+marshmallow-bench run --provider claude-cli --model sonnet
 
 # any other harness: describe the call once
-marshmallow-bench run --provider cli --model <model> --n-trials 5 \
+marshmallow-bench run --provider cli --model <model> \
   --cli-command '<binary> <flags> {prompt}' --harness <slug>
 ```
 
 Pass the model you are running as (`haiku`, `sonnet`, `opus`, or whatever id
-your harness expects). `--n-trials 3` for a quick look, 5 by default, 20 for
-leaderboard-grade resolution (about 300 calls).
+your harness expects). Leave `--n-trials` alone: it defaults to 20 per probe,
+which is the benchmark's specified setting and the only one a submission may
+use. That is about 360 subject calls and takes roughly 40 minutes for a small
+model, longer for a large one. `--n-trials 3` or `5` is for checking that the
+plumbing works, not for a result: at N=5 a perfect score still carries a 95%
+interval of [0.48, 1.00] per probe. Report any such run as exploratory and keep
+it out of the table.
 
 Writing the `--cli-command` template for your harness:
 
@@ -118,8 +123,9 @@ the behavioral map. Then go to **Step 4** below.
 
 **Step 0: Setup**
 
-- N = number of repetitions per probe. Default 3 (quick). Use 5 if the user asks
-  for a standard run. N=20 is the leaderboard setting and rarely worth it here.
+- N = number of repetitions per probe. The spec is N=20 and a submission needs
+  it, but by hand that is about 360 subagent turns; N=3 or 5 is for checking
+  that the loop works, and such a run is exploratory only, never submitted.
 - Record the exact model ID you run as (e.g. `claude-opus-5`, `gpt-5.4`,
   `gemini-2.5-pro`). If your harness does not tell you, **ask the user before
   starting**; never guess.
@@ -284,13 +290,14 @@ see how much of the score is artifact.
 ## Submitting a self-probe
 
 Only when the user asked for a submission (`/self-probe --submit`, "open a PR",
-"submit the results"). Steps:
+"submit the results"), and only for a run with N=20 per probe. Steps:
 
 1. Make sure `gh auth status` succeeds. Work on a branch:
    `git checkout -b self-probe/<model-slug>__<harness>`. Never commit to `main`,
    never force-push.
-2. Stage the three files from `results/self_probe/`: `.transcript.json`, `.json`,
-   `.md`.
+2. Stage the run's files from `results/self_probe/`: `.json` and `.md` on
+   Path A (the JSON holds every raw reply under `trials`, so it is the
+   transcript), plus `.transcript.json` on Path B.
 3. Add one row to the **Agent self-probes** table in `README.md` (under the
    leaderboard), keeping it sorted by kappa descending. Do **not** edit the API
    leaderboard table above it. Row format:
