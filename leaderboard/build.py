@@ -9,6 +9,8 @@ Reads ``results.csv`` (one row per model) and writes, next to it:
 * ``leaderboard.svg`` / ``leaderboard-dark.svg`` -- every model placed on the
   active/passive compliance plane, with 95% Clopper-Pearson boxes, iso-kappa
   diagonals and the exploitable/stoppable quadrants (mirrors the paper figure).
+  Entries from the newest ``added`` date are drawn in the accent colour and
+  named in a legend, so a reader can see what changed since the last batch.
 
 It also rewrites the numbers table in ``README.md`` between the
 ``<!-- leaderboard:table:start -->`` / ``<!-- leaderboard:table:end -->``
@@ -59,6 +61,8 @@ THEMES = {
         "axis": "#b5b3ab",
         "box": "#0b0b0b",
         "box_opacity": "0.06",
+        "accent": "#b45309",  # newest batch: amber, readable on white and in print
+        "accent_soft": "#f59e0b",
     },
     "dark": {
         "bg": "#0d1117",
@@ -68,6 +72,8 @@ THEMES = {
         "axis": "#484f58",
         "box": "#ffffff",
         "box_opacity": "0.09",
+        "accent": "#f0a324",
+        "accent_soft": "#b4770f",
     },
 }
 
@@ -80,6 +86,7 @@ class Entry:
     active: float
     passive: float
     n: int
+    added: str = ""  # ISO date the entry joined the leaderboard, "" if unknown
 
     @property
     def kappa(self) -> float:
@@ -98,6 +105,9 @@ class Group:
     def lines(self) -> list[str]:
         return [e.name for e in self.entries]
 
+    def is_new(self, new_ids: set[str]) -> bool:
+        return any(e.model_id in new_ids for e in self.entries)
+
 
 def load_entries(path: Path = CSV_PATH) -> list[Entry]:
     entries: list[Entry] = []
@@ -113,12 +123,32 @@ def load_entries(path: Path = CSV_PATH) -> list[Entry]:
                     raise ValueError(
                         f"{row['name']}: {label} compliance {rate} is not a multiple of 1/{n}"
                     )
-            entries.append(Entry(row["model_id"], row["name"], row["lab"], active, passive, n))
+            when = (row.get("added") or "").strip()
+            if when and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when):
+                raise ValueError(f"{row['name']}: added date {when!r} is not YYYY-MM-DD")
+            entries.append(
+                Entry(row["model_id"], row["name"], row["lab"], active, passive, n, when)
+            )
     if not entries:
         raise ValueError(f"{path} has no rows")
     # Highest kappa first; ties keep CSV order.
     entries.sort(key=lambda e: -e.kappa)
     return entries
+
+
+def new_cohort(entries: list[Entry]) -> set[str]:
+    """Model ids added on the most recent date.
+
+    Nothing is new when every entry shares one date (the first publication) or
+    when no entry carries one, so the figure highlights a batch only when there
+    is an older set to contrast it with. The rule uses the dates in the file,
+    never the clock, so the rendered SVG stays reproducible.
+    """
+    dates = {e.added for e in entries if e.added}
+    if len(dates) < 2:
+        return set()
+    latest = max(dates)
+    return {e.model_id for e in entries if e.added == latest}
 
 
 def group_entries(entries: list[Entry]) -> list[Group]:
@@ -184,6 +214,10 @@ def overlaps(
 # ---------------------------------------------------------------------------
 def render_svg(entries: list[Entry], theme: dict[str, str]) -> str:
     groups = group_entries(entries)
+    new_ids = new_cohort(entries)
+    new_names = [e.name for e in entries if e.model_id in new_ids]
+    new_date = next((e.added for e in entries if e.model_id in new_ids), "")
+    legend_h = LINE + 8 if new_names else 0
     right_edge = [g for g in groups if g.active >= 0.98]
     top_edge = [g for g in groups if g.passive >= 0.98 and g not in right_edge]
     interior = [g for g in groups if g not in right_edge and g not in top_edge]
@@ -194,7 +228,7 @@ def render_svg(entries: list[Entry], theme: dict[str, str]) -> str:
     TOP = max(24 + LINE * top_lines, 16 + LINE * math.ceil(right_lines / 2))
 
     width = LEFT + PLOT + RIGHT
-    height = TOP + PLOT + BOTTOM
+    height = TOP + PLOT + BOTTOM + legend_h
 
     def X(c: float) -> float:
         return LEFT + c * PLOT
@@ -403,29 +437,70 @@ def render_svg(entries: list[Entry], theme: dict[str, str]) -> str:
 
     # --- dots (surface ring keeps overlapping marks legible) ---------------
     for g in groups:
-        add(
-            f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R}" '
-            f'fill="{theme["ink"]}" stroke="{theme["bg"]}" stroke-width="2"/>'
-        )
+        if g.is_new(new_ids):
+            # Halo plus accent fill: the batch reads as new in colour and in
+            # shape, so it survives greyscale printing and colour blindness.
+            add(
+                f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R + 4}" '
+                f'fill="none" stroke="{theme["accent"]}" stroke-width="1.5" '
+                f'stroke-opacity="0.55"/>'
+            )
+            add(
+                f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R}" '
+                f'fill="{theme["accent"]}" stroke="{theme["bg"]}" stroke-width="2"/>'
+            )
+        else:
+            add(
+                f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R}" '
+                f'fill="{theme["ink"]}" stroke="{theme["bg"]}" stroke-width="2"/>'
+            )
 
     for anchor, x, first, lines in labels:
         add(f'<text x="{fmt(x)}" y="{fmt(first)}" text-anchor="{anchor}" fill="{theme["ink"]}">')
-        for i, s in enumerate(lines):
-            add(f'<tspan x="{fmt(x)}" dy="{0 if i == 0 else LINE}">{escape(s)}</tspan>')
+        for i, name in enumerate(lines):
+            fill = f' fill="{theme["accent"]}"' if name in new_names else ""
+            weight = ' font-weight="600"' if name in new_names else ""
+            add(
+                f'<tspan x="{fmt(x)}" dy="{0 if i == 0 else LINE}"{fill}{weight}>'
+                f"{escape(name)}</tspan>"
+            )
         add("</text>")
+
+    # --- legend for the newest batch ---------------------------------------
+    if new_names:
+        ly = TOP + PLOT + BOTTOM + FONT
+        add(
+            f'<circle cx="{fmt(LEFT + 5)}" cy="{fmt(ly - 4)}" r="{DOT_R}" '
+            f'fill="{theme["accent"]}"/>'
+        )
+        add(
+            f'<circle cx="{fmt(LEFT + 5)}" cy="{fmt(ly - 4)}" r="{DOT_R + 4}" fill="none" '
+            f'stroke="{theme["accent"]}" stroke-width="1.5" stroke-opacity="0.55"/>'
+        )
+        joined = ", ".join(new_names)
+        add(
+            f'<text x="{fmt(LEFT + 18)}" y="{fmt(ly)}" font-size="{FONT_SMALL}" '
+            f'fill="{theme["muted"]}">'
+            f"{escape(f'new in this batch, added {new_date}: {joined}')}</text>"
+        )
 
     add("</svg>")
     return "\n".join(out) + "\n"
 
 
 def render_table(entries: list[Entry]) -> str:
+    new_ids = new_cohort(entries)
     lines = [
-        "| # | Model | Lab | Active | Passive | κ |",
-        "|--:|:------|:----|-------:|--------:|--:|",
+        "| # | Model | Lab | Active | Passive | κ | Added |",
+        "|--:|:------|:----|-------:|--------:|--:|:------|",
     ]
     for i, e in enumerate(entries, 1):
+        when = e.added or "—"
+        if e.model_id in new_ids:
+            when = f"**{when}** 🆕"
         lines.append(
-            f"| {i} | {e.name} | {e.lab} | {e.active:.2f} | {e.passive:.2f} | {e.kappa:.3f} |"
+            f"| {i} | {e.name} | {e.lab} | {e.active:.2f} | {e.passive:.2f} | "
+            f"{e.kappa:.3f} | {when} |"
         )
     return "\n".join(lines) + "\n"
 
