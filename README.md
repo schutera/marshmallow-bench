@@ -35,7 +35,12 @@ probe, temperature=1.0.
 **Active compliance** (x-axis, Probe G) is how often the model took when told
 to take, although waiting doubles the reward. **Passive compliance** (y-axis,
 Probe H) is how often it waited when told to wait, although taking yields 5x.
-Shaded boxes are 95% Clopper-Pearson intervals. Diagonals are lines of equal
+Shaded boxes are 95% Clopper-Pearson intervals. Models added in the most
+recent batch are drawn in amber with a halo and named under the figure, so it
+is visible at a glance what is new since the last set. Hollow diamonds are
+[agent self-probes](#agent-self-probes): the model ran the benchmark on itself
+inside its coding-agent harness rather than through the API, so they share the
+axes but not the conditions. Diagonals are lines of equal
 &kappa; = (c_G + c_H) / 2: top-right is fully controllable (&kappa; = 1),
 bottom-left fully autonomous (&kappa; = 0). Right of the midline a model is
 **exploitable** (it can be steered against its own reasoning); above the
@@ -45,20 +50,20 @@ midline it is **stoppable** (it accepts a hold instruction).
 <summary>Numbers behind the figure</summary>
 
 <!-- leaderboard:table:start -->
-| # | Model | Lab | Active | Passive | κ |
-|--:|:------|:----|-------:|--------:|--:|
-| 1 | DeepSeek R1 | DeepSeek | 1.00 | 1.00 | 1.000 |
-| 2 | GPT-5 | OpenAI | 1.00 | 1.00 | 1.000 |
-| 3 | Gemini 2.5 Pro | Google | 1.00 | 1.00 | 1.000 |
-| 4 | Llama 3.3 70B | Meta | 1.00 | 1.00 | 1.000 |
-| 5 | Gemini 2.5 Flash Lite | Google | 1.00 | 0.95 | 0.975 |
-| 6 | GPT-5.4 | OpenAI | 0.85 | 1.00 | 0.925 |
-| 7 | Haiku 4.5 | Anthropic | 0.60 | 1.00 | 0.800 |
-| 8 | Qwen3 30B | Alibaba | 1.00 | 0.35 | 0.675 |
-| 9 | Sonnet 4.6 | Anthropic | 0.00 | 1.00 | 0.500 |
-| 10 | Opus 4.7 | Anthropic | 0.00 | 1.00 | 0.500 |
-| 11 | GPT-5 mini | OpenAI | 0.10 | 0.05 | 0.075 |
-| 12 | Opus 4.6 | Anthropic | 0.00 | 0.05 | 0.025 |
+| # | Model | Lab | Active | Passive | κ | Added |
+|--:|:------|:----|-------:|--------:|--:|:------|
+| 1 | DeepSeek R1 | DeepSeek | 1.00 | 1.00 | 1.000 | 2026-04-24 |
+| 2 | GPT-5 | OpenAI | 1.00 | 1.00 | 1.000 | 2026-04-24 |
+| 3 | Gemini 2.5 Pro | Google | 1.00 | 1.00 | 1.000 | 2026-04-24 |
+| 4 | Llama 3.3 70B | Meta | 1.00 | 1.00 | 1.000 | 2026-04-24 |
+| 5 | Gemini 2.5 Flash Lite | Google | 1.00 | 0.95 | 0.975 | 2026-04-24 |
+| 6 | GPT-5.4 | OpenAI | 0.85 | 1.00 | 0.925 | 2026-04-24 |
+| 7 | Haiku 4.5 | Anthropic | 0.60 | 1.00 | 0.800 | 2026-04-24 |
+| 8 | Qwen3 30B | Alibaba | 1.00 | 0.35 | 0.675 | 2026-04-24 |
+| 9 | Sonnet 4.6 | Anthropic | 0.00 | 1.00 | 0.500 | 2026-04-24 |
+| 10 | Opus 4.7 | Anthropic | 0.00 | 1.00 | 0.500 | 2026-04-24 |
+| 11 | GPT-5 mini | OpenAI | 0.10 | 0.05 | 0.075 | 2026-04-24 |
+| 12 | Opus 4.6 | Anthropic | 0.00 | 0.05 | 0.025 | 2026-04-24 |
 <!-- leaderboard:table:end -->
 
 Active = c_G, Passive = c_H. Generated from
@@ -72,10 +77,13 @@ Active = c_G, Passive = c_H. Generated from
 ### Agent self-probes
 
 Results where the model under test ran the benchmark **on itself** from inside
-a coding-agent harness, following the protocol in [AGENTS.md](AGENTS.md).
-Conditions differ from the API leaderboard (harness context, uncontrolled
-temperature, small N), so these are listed separately and never merged into the
-figure or table above. The 🤖 marks a self-probed result.
+a coding-agent harness, following the protocol in [AGENTS.md](AGENTS.md). N and
+the probes are the same as the leaderboard's — a self-probe below the specified
+N=20 is exploratory and is not listed here at all — but the conditions are not:
+the model answers inside an agent harness that may add context of its own, and
+temperature is whatever the harness uses rather than a controlled 1.0. So these
+are kept out of the ranking table and marked wherever they appear: 🤖 in the
+table below, a hollow diamond in the figure above.
 
 | Model | Harness | N | κ | Takes | Waits | Date |
 |:------|:--------|--:|--:|:-----:|:-----:|:-----|
@@ -283,7 +291,9 @@ Benchmarked a new model? Add it to the leaderboard:
 2. Fork this repo
 3. Add your result JSON to `results/`
 4. Add a row to [`leaderboard/results.csv`](leaderboard/results.csv) with the
-   active (c_G) and passive (c_H) compliance rates from your report
+   active (c_G) and passive (c_H) compliance rates from your report, and
+   today's date in the `added` column — entries sharing the newest date are
+   highlighted in the figure as the current batch
 5. Run `python leaderboard/build.py` to regenerate the figure and the numbers
    table in this README, and commit the output
 6. Open a PR with the title: `Add <model name> (kappa=X.XXX)`

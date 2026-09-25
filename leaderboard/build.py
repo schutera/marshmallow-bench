@@ -9,6 +9,11 @@ Reads ``results.csv`` (one row per model) and writes, next to it:
 * ``leaderboard.svg`` / ``leaderboard-dark.svg`` -- every model placed on the
   active/passive compliance plane, with 95% Clopper-Pearson boxes, iso-kappa
   diagonals and the exploitable/stoppable quadrants (mirrors the paper figure).
+  Entries from the newest ``added`` date are drawn in the accent colour and
+  named in a legend, so a reader can see what changed since the last batch.
+  Agent self-probes (``results/self_probe/*.json``, see AGENTS.md) join the
+  same plane as hollow diamonds: same axes, different measurement conditions,
+  so they are marked rather than merged.
 
 It also rewrites the numbers table in ``README.md`` between the
 ``<!-- leaderboard:table:start -->`` / ``<!-- leaderboard:table:end -->``
@@ -21,6 +26,7 @@ and diff cleanly in PRs.
 from __future__ import annotations
 
 import csv
+import json
 import math
 import re
 import sys
@@ -28,10 +34,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from marshmallow_bench.probes import SPEC_N_TRIALS
 from marshmallow_bench.scoring import _clopper_pearson
 
 HERE = Path(__file__).resolve().parent
 CSV_PATH = HERE / "results.csv"
+SELF_PROBE_DIR = HERE.parent / "results" / "self_probe"
 README_PATH = HERE.parent / "README.md"
 TABLE_START = "<!-- leaderboard:table:start -->"
 TABLE_END = "<!-- leaderboard:table:end -->"
@@ -59,6 +67,8 @@ THEMES = {
         "axis": "#b5b3ab",
         "box": "#0b0b0b",
         "box_opacity": "0.06",
+        "accent": "#b45309",  # newest batch: amber, readable on white and in print
+        "accent_soft": "#f59e0b",
     },
     "dark": {
         "bg": "#0d1117",
@@ -68,6 +78,8 @@ THEMES = {
         "axis": "#484f58",
         "box": "#ffffff",
         "box_opacity": "0.09",
+        "accent": "#f0a324",
+        "accent_soft": "#b4770f",
     },
 }
 
@@ -80,6 +92,8 @@ class Entry:
     active: float
     passive: float
     n: int
+    added: str = ""  # ISO date the entry joined the leaderboard, "" if unknown
+    self_probe: bool = False  # measured by the model on itself, inside a harness
 
     @property
     def kappa(self) -> float:
@@ -98,6 +112,17 @@ class Group:
     def lines(self) -> list[str]:
         return [e.name for e in self.entries]
 
+    def is_new(self, new_ids: set[str]) -> bool:
+        return any(e.model_id in new_ids for e in self.entries)
+
+    @property
+    def has_api(self) -> bool:
+        return any(not e.self_probe for e in self.entries)
+
+    @property
+    def has_self_probe(self) -> bool:
+        return any(e.self_probe for e in self.entries)
+
 
 def load_entries(path: Path = CSV_PATH) -> list[Entry]:
     entries: list[Entry] = []
@@ -113,12 +138,63 @@ def load_entries(path: Path = CSV_PATH) -> list[Entry]:
                     raise ValueError(
                         f"{row['name']}: {label} compliance {rate} is not a multiple of 1/{n}"
                     )
-            entries.append(Entry(row["model_id"], row["name"], row["lab"], active, passive, n))
+            when = (row.get("added") or "").strip()
+            if when and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when):
+                raise ValueError(f"{row['name']}: added date {when!r} is not YYYY-MM-DD")
+            entries.append(
+                Entry(row["model_id"], row["name"], row["lab"], active, passive, n, when)
+            )
     if not entries:
         raise ValueError(f"{path} has no rows")
     # Highest kappa first; ties keep CSV order.
     entries.sort(key=lambda e: -e.kappa)
     return entries
+
+
+def load_self_probes(directory: Path | None = SELF_PROBE_DIR) -> list[Entry]:
+    """Read agent self-probes that meet the specified N.
+
+    A self-probe is a run the model drove on itself inside its agent harness
+    (AGENTS.md). Conditions differ from the API leaderboard, so these entries
+    are marked, and anything below ``SPEC_N_TRIALS`` is exploratory and left
+    out entirely.
+    """
+    if directory is None or not directory.is_dir():
+        return []
+    entries: list[Entry] = []
+    for path in sorted(directory.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("mode") != "self_probe" or data.get("n_trials", 0) < SPEC_N_TRIALS:
+            continue
+        kappa = data["kappa"]
+        entries.append(
+            Entry(
+                model_id=f"self-probe:{path.stem}",
+                name=f"{data['model']} (self-probe)",
+                lab=data.get("harness") or "agent harness",
+                active=kappa["c_g"],
+                passive=kappa["c_h"],
+                n=data["n_trials"],
+                added=data["timestamp"][:10],
+                self_probe=True,
+            )
+        )
+    return entries
+
+
+def new_cohort(entries: list[Entry]) -> set[str]:
+    """Model ids added on the most recent date.
+
+    Nothing is new when every entry shares one date (the first publication) or
+    when no entry carries one, so the figure highlights a batch only when there
+    is an older set to contrast it with. The rule uses the dates in the file,
+    never the clock, so the rendered SVG stays reproducible.
+    """
+    dates = {e.added for e in entries if e.added and not e.self_probe}
+    if len(dates) < 2:
+        return set()
+    latest = max(dates)
+    return {e.model_id for e in entries if e.added == latest and not e.self_probe}
 
 
 def group_entries(entries: list[Entry]) -> list[Group]:
@@ -184,6 +260,12 @@ def overlaps(
 # ---------------------------------------------------------------------------
 def render_svg(entries: list[Entry], theme: dict[str, str]) -> str:
     groups = group_entries(entries)
+    new_ids = new_cohort(entries)
+    new_names = [e.name for e in entries if e.model_id in new_ids]
+    new_date = next((e.added for e in entries if e.model_id in new_ids), "")
+    any_self_probe = any(e.self_probe for e in entries)
+    legend_rows = int(any_self_probe) + int(bool(new_names))
+    legend_h = 8 + LINE * legend_rows if legend_rows else 0
     right_edge = [g for g in groups if g.active >= 0.98]
     top_edge = [g for g in groups if g.passive >= 0.98 and g not in right_edge]
     interior = [g for g in groups if g not in right_edge and g not in top_edge]
@@ -194,7 +276,7 @@ def render_svg(entries: list[Entry], theme: dict[str, str]) -> str:
     TOP = max(24 + LINE * top_lines, 16 + LINE * math.ceil(right_lines / 2))
 
     width = LEFT + PLOT + RIGHT
-    height = TOP + PLOT + BOTTOM
+    height = TOP + PLOT + BOTTOM + legend_h
 
     def X(c: float) -> float:
         return LEFT + c * PLOT
@@ -401,31 +483,118 @@ def render_svg(entries: list[Entry], theme: dict[str, str]) -> str:
             f'stroke="{theme["axis"]}" stroke-width="1"/>'
         )
 
+    def diamond(cx: float, cy: float, r: float) -> str:
+        pts = " ".join(
+            f"{fmt(x)},{fmt(y)}"
+            for x, y in ((cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy))
+        )
+        return f'<polygon points="{pts}" '
+
     # --- dots (surface ring keeps overlapping marks legible) ---------------
     for g in groups:
+        if not g.has_api:
+            continue
+        if g.is_new(new_ids):
+            # Halo plus accent fill: the batch reads as new in colour and in
+            # shape, so it survives greyscale printing and colour blindness.
+            add(
+                f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R + 4}" '
+                f'fill="none" stroke="{theme["accent"]}" stroke-width="1.5" '
+                f'stroke-opacity="0.55"/>'
+            )
+            add(
+                f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R}" '
+                f'fill="{theme["accent"]}" stroke="{theme["bg"]}" stroke-width="2"/>'
+            )
+        else:
+            add(
+                f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R}" '
+                f'fill="{theme["ink"]}" stroke="{theme["bg"]}" stroke-width="2"/>'
+            )
+
+    # A self-probe is a different measurement, so it gets a different shape:
+    # hollow, and large enough to ring an API dot sitting on the same point.
+    for g in groups:
+        if not g.has_self_probe:
+            continue
         add(
-            f'<circle cx="{fmt(X(g.active))}" cy="{fmt(Y(g.passive))}" r="{DOT_R}" '
-            f'fill="{theme["ink"]}" stroke="{theme["bg"]}" stroke-width="2"/>'
+            diamond(X(g.active), Y(g.passive), DOT_R + 4)
+            + f'fill="{theme["bg"]}" fill-opacity="0.65" stroke="{theme["ink"]}" '
+            f'stroke-width="2"/>'
         )
 
     for anchor, x, first, lines in labels:
         add(f'<text x="{fmt(x)}" y="{fmt(first)}" text-anchor="{anchor}" fill="{theme["ink"]}">')
-        for i, s in enumerate(lines):
-            add(f'<tspan x="{fmt(x)}" dy="{0 if i == 0 else LINE}">{escape(s)}</tspan>')
+        for i, name in enumerate(lines):
+            fill = f' fill="{theme["accent"]}"' if name in new_names else ""
+            weight = ' font-weight="600"' if name in new_names else ""
+            add(
+                f'<tspan x="{fmt(x)}" dy="{0 if i == 0 else LINE}"{fill}{weight}>'
+                f"{escape(name)}</tspan>"
+            )
         add("</text>")
+
+    # --- legends ------------------------------------------------------------
+    row = 0
+    if any_self_probe:
+        ly = TOP + PLOT + BOTTOM + FONT
+        add(
+            f'<circle class="key" cx="{fmt(LEFT + 5)}" cy="{fmt(ly - 4)}" r="{DOT_R}" '
+            f'fill="{theme["ink"]}"/>'
+        )
+        add(
+            f'<text x="{fmt(LEFT + 18)}" y="{fmt(ly)}" font-size="{FONT_SMALL}" '
+            f'fill="{theme["muted"]}">API conditions</text>'
+        )
+        dx = LEFT + 18 + text_width("API conditions", FONT_SMALL) + 22
+        add(
+            diamond(dx, ly - 4, DOT_R + 4).replace("<polygon ", '<polygon class="key" ')
+            + f'fill="{theme["bg"]}" fill-opacity="0.65" stroke="{theme["ink"]}" '
+            f'stroke-width="2"/>'
+        )
+        add(
+            f'<text x="{fmt(dx + 14)}" y="{fmt(ly)}" font-size="{FONT_SMALL}" '
+            f'fill="{theme["muted"]}">'
+            "agent self-probe: the model ran the benchmark on itself inside its "
+            "harness (AGENTS.md)</text>"
+        )
+        row += 1
+    if new_names:
+        ly = TOP + PLOT + BOTTOM + FONT + row * LINE
+        add(
+            f'<circle class="key" cx="{fmt(LEFT + 5)}" cy="{fmt(ly - 4)}" r="{DOT_R}" '
+            f'fill="{theme["accent"]}"/>'
+        )
+        add(
+            f'<circle class="key" cx="{fmt(LEFT + 5)}" cy="{fmt(ly - 4)}" r="{DOT_R + 4}" '
+            f'fill="none" stroke="{theme["accent"]}" stroke-width="1.5" stroke-opacity="0.55"/>'
+        )
+        joined = ", ".join(new_names)
+        add(
+            f'<text x="{fmt(LEFT + 18)}" y="{fmt(ly)}" font-size="{FONT_SMALL}" '
+            f'fill="{theme["muted"]}">'
+            f"{escape(f'new in this batch, added {new_date}: {joined}')}</text>"
+        )
 
     add("</svg>")
     return "\n".join(out) + "\n"
 
 
 def render_table(entries: list[Entry]) -> str:
+    """The README table lists API-condition runs; self-probes have their own."""
+    entries = [e for e in entries if not e.self_probe]
+    new_ids = new_cohort(entries)
     lines = [
-        "| # | Model | Lab | Active | Passive | κ |",
-        "|--:|:------|:----|-------:|--------:|--:|",
+        "| # | Model | Lab | Active | Passive | κ | Added |",
+        "|--:|:------|:----|-------:|--------:|--:|:------|",
     ]
     for i, e in enumerate(entries, 1):
+        when = e.added or "—"
+        if e.model_id in new_ids:
+            when = f"**{when}** 🆕"
         lines.append(
-            f"| {i} | {e.name} | {e.lab} | {e.active:.2f} | {e.passive:.2f} | {e.kappa:.3f} |"
+            f"| {i} | {e.name} | {e.lab} | {e.active:.2f} | {e.passive:.2f} | "
+            f"{e.kappa:.3f} | {when} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -438,9 +607,13 @@ def update_readme(table: str, readme: str) -> str:
 
 
 def build(
-    csv_path: Path = CSV_PATH, out_dir: Path = HERE, readme_path: Path | None = README_PATH
+    csv_path: Path = CSV_PATH,
+    out_dir: Path = HERE,
+    readme_path: Path | None = README_PATH,
+    self_probe_dir: Path | None = SELF_PROBE_DIR,
 ) -> None:
-    entries = load_entries(csv_path)
+    entries = load_entries(csv_path) + load_self_probes(self_probe_dir)
+    entries.sort(key=lambda e: -e.kappa)
     for theme_name, theme in THEMES.items():
         suffix = "" if theme_name == "light" else f"-{theme_name}"
         target = out_dir / f"leaderboard{suffix}.svg"
