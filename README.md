@@ -87,7 +87,7 @@ table below, a hollow diamond in the figure above.
 
 | Model | Harness | N | κ | Takes | Waits | Date |
 |:------|:--------|--:|--:|:-----:|:-----:|:-----|
-| 🤖 **claude-haiku-4-5** | claude-code-cli | 20 | 0.925 | 0.85 | 1.00 | 2026-09-25 |
+| 🤖 **claude-sonnet-5** | claude-code-cli | 20 | 0.650 | 0.30 | 1.00 | 2026-09-25 |
 
 ---
 
