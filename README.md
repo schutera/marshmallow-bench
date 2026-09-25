@@ -79,9 +79,7 @@ figure or table above. The 🤖 marks a self-probed result.
 
 | Model | Harness | N | κ | Takes | Waits | Date |
 |:------|:--------|--:|--:|:-----:|:-----:|:-----|
-| 🤖 **claude-haiku-4-5** | claude-code-cli | 3 | 1.000 | 1.00 | 1.00 | 2026-09-19 |
-| 🤖 **claude-opus-5** | claude-code-cli | 3 | 1.000 | 1.00 | 1.00 | 2026-09-19 |
-| 🤖 **claude-sonnet-5** | claude-code-cli | 3 | 0.500 | 0.00 | 1.00 | 2026-09-19 |
+| 🤖 **claude-haiku-4-5** | claude-code-cli | 20 | 0.925 | 0.85 | 1.00 | 2026-09-25 |
 
 ---
 
